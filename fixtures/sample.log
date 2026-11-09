@@ -1,0 +1,19 @@
+2026-10-21 09:14:02 INFO  app starting, config loaded from /etc/myapp/prod.env
+2026-10-21 09:14:03 DEBUG connecting to postgres://deploy:s3cret!dbpass@db.internal:5432/myapp
+2026-10-21 09:14:04 INFO  stripe publishable key in use: pk_test_4eC39HqLyjWDarjtT1zdp7dc
+2026-10-21 09:14:05 ERROR payment failed for card 4111 1111 1111 1111, customer jane.doe@example.com
+2026-10-21 09:14:06 WARN  retrying webhook https://hooks:wh3bhook-pw@hooks.internal/v1/events
+2026-10-21 09:14:07 INFO  user signed in from 203.0.113.45, phone +1-555-014-8890
+2026-10-21 09:14:08 DEBUG openai client key sk-9f8e7d6c5b4a394827161514131210
+2026-10-21 09:14:09 DEBUG aws credentials AKIAIOSFODNN7EXAMPLE loaded from env
+2026-10-21 09:14:10 INFO  slack alert token xoxb-EXAMPLE-FAKE-TOKEN-0000
+2026-10-21 09:14:11 DEBUG Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dummySignatureForFixturesOnly0
+2026-10-21 09:14:12 ERROR github token ghp_abcdefghij0123456789abcdefghij012345 leaked in commit message
+2026-10-21 09:14:13 INFO  support ticket from ops-team@example.org, callback 020 7946 0018
+2026-10-21 09:14:14 DEBUG private key for deploy:
+-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEA7bqsmk6f8qWmXh5JvE9J2vYd0q1w2e3r4t5y6u7i8o9p0a1s
+d2f3g4h5j6k7l8z9x0c1v2b3n4m5q6w7e8r9t0y1u2i3o4p5a6s7d8f9g0h1j2
+k3l4z5x6c7v8b9n0m1q2w3e4r5t6y7u8i9o0p1a2s3d4f5g6h7j8k9l0z1x2c3v
+-----END RSA PRIVATE KEY-----
+2026-10-21 09:14:15 INFO  request served in 42ms

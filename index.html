@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>logveil-shield by AamirTechs</title>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f6f8fb; color: #1c2733; }
+header { background: #0b1f3a; color: #ffffff; padding: 28px 20px 22px; border-bottom: 4px solid #d4a72c; }
+header .wrap, main, footer .wrap { max-width: 880px; margin: 0 auto; }
+header h1 { margin: 0 0 6px; font-size: 28px; }
+header p { margin: 0; color: #c9d6e8; font-size: 15px; }
+main { padding: 24px 20px 8px; }
+.card { background: #ffffff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(11, 31, 58, 0.12); }
+label { display: block; font-weight: 600; margin: 14px 0 6px; font-size: 14px; }
+label:first-child { margin-top: 0; }
+textarea { width: 100%; min-height: 180px; padding: 10px; border: 1px solid #c3cedd; border-radius: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+input[type="text"], input[type="number"], input[type="date"], select { padding: 8px 10px; border: 1px solid #c3cedd; border-radius: 8px; font-size: 14px; background: #ffffff; }
+.controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; }
+.controls .field label { margin-top: 0; }
+.checkline { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; padding-bottom: 9px; }
+.checkline input { width: 16px; height: 16px; }
+.buttons { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; }
+button { border: 0; border-radius: 8px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
+button.primary { background: #0b1f3a; color: #ffffff; }
+button.secondary { background: #eef2f8; color: #0b1f3a; border: 1px solid #c3cedd; }
+button.accent { background: #d4a72c; color: #0b1f3a; }
+pre { background: #0b1f3a; color: #e8eef7; border-radius: 8px; padding: 14px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; font-size: 13px; min-height: 60px; }
+.hint { font-size: 13px; color: #5a6b82; margin-top: 6px; }
+footer { padding: 18px 20px 30px; color: #5a6b82; font-size: 13px; }
+footer a { color: #0b1f3a; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>logveil-shield</h1>
+    <p>Scrub secrets and sensitive data from logs and config files before you share them.</p>
+  </div>
+</header>
+<main>
+  <div class="card">
+    <label for="file">Choose a file</label>
+    <input type="file" id="file" accept=".log,.env,.txt,.cfg,.ini,text/plain">
+    <label for="input">Or paste the log or config text</label>
+    <textarea id="input" placeholder="Paste a log or config here, choose a file, or load a sample."></textarea>
+    <div class="controls" style="margin-top:14px;">
+      <div class="field">
+        <label for="opt-mode">Mode (CLI --mode, default redact)</label>
+        <select id="opt-mode">
+          <option value="redact" selected>redact: [REDACTED:TYPE]</option>
+          <option value="tokenize">tokenize: [TYPE_1], [TYPE_2]</option>
+          <option value="hash">hash: [HASH:TYPE:abcdef123456]</option>
+        </select>
+      </div>
+      <div class="checkline">
+        <input type="checkbox" id="opt-report">
+        <label for="opt-report" style="margin:0;">Summary report (CLI --report)</label>
+      </div>
+    </div>
+    <div class="controls" style="margin-top:10px;">
+      <div class="field">
+        <label for="opt-patname">Custom pattern name (CLI --pattern, optional)</label>
+        <input type="text" id="opt-patname" placeholder="ORDER_ID">
+      </div>
+      <div class="field">
+        <label for="opt-pat">Custom pattern regex</label>
+        <input type="text" id="opt-pat" placeholder="ORD-[0-9]{6}">
+      </div>
+    </div>
+    <div class="buttons">
+      <button type="button" class="primary" id="run">Run</button>
+      <button type="button" class="secondary" id="sample">Load sample log</button>
+      <button type="button" class="secondary" id="sample2">Load sample config</button>
+      <button type="button" class="accent" id="download" disabled>Download scrubbed text</button>
+    </div>
+    <label for="output">Scrubbed output</label>
+    <pre id="output">Your scrubbed text will appear here.</pre>
+    <p class="hint">Placeholders like changeme and xxx are left alone, credit cards must pass the Luhn checksum, and IPv4 octets are validated, exactly like the CLI. The samples use fake values only, assembled in your browser from parts so no scanner-shaped string sits in this page.</p>
+  </div>
+</main>
+<footer>
+  <div class="wrap">
+    <p>Built by AamirTechs. <a href="https://aamirtechs.github.io/">All tools</a> | <a href="https://github.com/aamirtechs/logveil-shield">Source</a></p>
+    <p>Privacy: this tool runs 100% in your browser. Nothing is uploaded.</p>
+  </div>
+</footer>
+<script id="core">
+// logveil-shield core logic: a faithful port of the Python package
+// (src/logveil_shield/detectors.py and engine.py). Pure functions only,
+// no DOM access. Hash mode uses a small synchronous SHA-256 below so
+// runTool can stay synchronous like the CLI.
+// window.runTool(inputText, options) returns the scrubbed text, with the
+// CLI --report table appended when options.report is true.
+// options: { mode: "redact" (default), "tokenize", or "hash",
+//            report: false, customPatterns: [{name, pattern}] }
+"use strict";
+
+var PLACEHOLDERS = {};
+["none", "null", "nil", "changeme", "change-me", "xxx", "xxxx", "redacted", "[redacted]", "***", "your-key-here", "todo", "...", "undefined", "example"].forEach(function (w) { PLACEHOLDERS[w] = true; });
+function luhnOk(digits) {
+  var total = 0;
+  var rev = String(digits).split("").reverse();
+  for (var i = 0; i < rev.length; i++) {
+    var d = parseInt(rev[i], 10);
+    if (i % 2 === 1) { d *= 2; if (d > 9) d -= 9; }
+    total += d;
+  }
+  return total % 10 === 0;
+}
+function validIpv4(m) {
+  return m[0].split(".").every(function (p) { var n = parseInt(p, 10); return n >= 0 && n <= 255; });
+}
+function validCard(m) {
+  var digits = m[0].replace(/\D/g, "");
+  return digits.length >= 13 && digits.length <= 19 && luhnOk(digits);
+}
+function notPlaceholder(m) {
+  var value = (m.groups && m.groups.value !== undefined) ? m.groups.value : m[0];
+  return !PLACEHOLDERS[value.trim().toLowerCase()];
+}
+function D(name, regex, valueGroup, validator) {
+  return { name: name, regex: regex, valueGroup: valueGroup || null, validator: validator || null };
+}
+var DETECTORS = [
+  D("PEM_PRIVATE_KEY", /-----BEGIN (?:RSA |EC |DSA |OPENSSH |ED25519 )?PRIVATE KEY-----.*?-----END (?:RSA |EC |DSA |OPENSSH |ED25519 )?PRIVATE KEY-----/gsd),
+  D("DB_CONNECTION_STRING", /\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|rediss?):\/\/[^\s'"]+/gid),
+  D("URL_CREDENTIALS", /https?:\/\/[^:\/\s@]+:(?<value>[^@\s\/]+)@/gd, "value"),
+  D("AWS_ACCESS_KEY", /\bAKIA[0-9A-Z]{16}\b/gd),
+  D("AWS_SECRET_KEY", /(?<key>aws[_-]?secret[_-]?access[_-]?key)\s*[:=]\s*(?<q>['"]?)(?<value>[A-Za-z0-9\/+=]{30,})\k<q>/gid, "value", notPlaceholder),
+  D("GITHUB_TOKEN", /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36}\b|\bgithub_pat_[A-Za-z0-9_]{82}\b/gd),
+  D("OPENAI_API_KEY", /\bsk-[A-Za-z0-9]{20,}\b/gd),
+  D("STRIPE_KEY", /\b(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b/gd),
+  D("SLACK_TOKEN", /\bxox[abpras]-[A-Za-z0-9-]{10,}\b/gd),
+  D("JWT", /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/gd),
+  D("BEARER_TOKEN", /(?<key>[Bb]earer)\s+(?<value>[A-Za-z0-9\-._~+\/=]{10,})/gd, "value", notPlaceholder),
+  D("API_SECRET", /(?<key>(?:[A-Za-z_][A-Za-z0-9_]*)?(?:api[_-]?key|api[_-]?secret|secret|password|passwd|pwd|token|client[_-]?secret)[A-Za-z0-9_]*)\s*[:=]\s*(?<q>['"]?)(?<value>[^\s"'#;,]{4,})\k<q>/gid, "value", notPlaceholder),
+  D("CREDIT_CARD", /(?<!\d)\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}(?:[ -]?\d{1,3})?(?!\d)/gd, null, validCard),
+  D("EMAIL", /(?<![\w:.\/-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/gd),
+  D("IPV4", /\b(?:\d{1,3}\.){3}\d{1,3}\b/gd, null, validIpv4),
+  D("PHONE", /(?<!\d)(?:\+\d{1,4}(?:[ .-]?\d){6,12}|\(?\d{3}\)?[ .-]?\d{3}[ .-]?\d{4})(?!\d)/gd)
+];
+function utf8Bytes(str) {
+  if (typeof TextEncoder !== "undefined") return new TextEncoder().encode(str);
+  var out = [];
+  for (var i = 0; i < str.length; i++) {
+    var code = str.charCodeAt(i);
+    if (code < 0x80) out.push(code);
+    else if (code < 0x800) { out.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f)); }
+    else if (code >= 0xd800 && code <= 0xdbff && i + 1 < str.length) {
+      var cp = 0x10000 + ((code - 0xd800) * 0x400) + (str.charCodeAt(++i) - 0xdc00);
+      out.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+    } else { out.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f)); }
+  }
+  return new Uint8Array(out);
+}
+var SHA256_K = [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];
+function sha256Hex(str) {
+  var bytes = utf8Bytes(str);
+  var bitLenHi = Math.floor(bytes.length / 0x20000000), bitLenLo = (bytes.length * 8) >>> 0;
+  var padded = new Uint8Array((((bytes.length + 9 + 63) >> 6) << 6));
+  padded.set(bytes);
+  padded[bytes.length] = 0x80;
+  var view = new DataView(padded.buffer);
+  view.setUint32(padded.length - 4, bitLenLo);
+  view.setUint32(padded.length - 8, bitLenHi);
+  var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+  var W = new Array(64);
+  function rotr(x, n) { return (x >>> n) | (x << (32 - n)); }
+  for (var block = 0; block < padded.length; block += 64) {
+    var t;
+    for (t = 0; t < 16; t++) W[t] = view.getInt32(block + t * 4);
+    for (t = 16; t < 64; t++) {
+      var s0 = rotr(W[t - 15], 7) ^ rotr(W[t - 15], 18) ^ (W[t - 15] >>> 3);
+      var s1 = rotr(W[t - 2], 17) ^ rotr(W[t - 2], 19) ^ (W[t - 2] >>> 10);
+      W[t] = (W[t - 16] + s0 + W[t - 7] + s1) | 0;
+    }
+    var a = H[0] | 0, b = H[1] | 0, c = H[2] | 0, d = H[3] | 0, e = H[4] | 0, f = H[5] | 0, g = H[6] | 0, h = H[7] | 0;
+    for (t = 0; t < 64; t++) {
+      var S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+      var ch = (e & f) ^ (~e & g);
+      var temp1 = (h + S1 + ch + (SHA256_K[t] | 0) + W[t]) | 0;
+      var S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+      var maj = (a & b) ^ (a & c) ^ (b & c);
+      var temp2 = (S0 + maj) | 0;
+      h = g; g = f; f = e; e = (d + temp1) | 0; d = c; c = b; b = a; a = (temp1 + temp2) | 0;
+    }
+    H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;
+    H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;
+  }
+  return H.map(function (x) { var s = (x >>> 0).toString(16); while (s.length < 8) s = "0" + s; return s; }).join("");
+}
+function buildDetectors(customPatterns) {
+  var detectors = [];
+  (customPatterns || []).forEach(function (cp) {
+    var compiled;
+    try { compiled = new RegExp(cp.pattern, "gd"); }
+    catch (err) { throw new Error("invalid regex for --pattern '" + String(cp.name).toUpperCase() + "': " + err.message); }
+    detectors.push(D(String(cp.name).toUpperCase(), compiled));
+  });
+  return detectors.concat(DETECTORS);
+}
+function collectHits(text, detectors) {
+  var hits = [];
+  detectors.forEach(function (detector, priority) {
+    var re = detector.regex;
+    re.lastIndex = 0;
+    var m;
+    while ((m = re.exec(text)) !== null) {
+      if (m[0].length === 0) { re.lastIndex++; continue; }
+      if (detector.validator !== null && !detector.validator(m)) continue;
+      var vstart, vend;
+      if (detector.valueGroup) {
+        var val = m.groups ? m.groups[detector.valueGroup] : undefined;
+        if (!val) continue;
+        var span = m.indices.groups[detector.valueGroup];
+        vstart = span[0]; vend = span[1];
+      } else {
+        vstart = m.indices[0][0]; vend = m.indices[0][1];
+      }
+      hits.push({ start: m.indices[0][0], end: m.indices[0][1], detector: detector, valueStart: vstart, valueEnd: vend, priority: priority });
+    }
+  });
+  hits.sort(function (a, b) { return (a.start - b.start) || (a.priority - b.priority); });
+  return hits;
+}
+function reportTable(counts) {
+  var total = 0;
+  Object.keys(counts).forEach(function (k) { total += counts[k]; });
+  var names = Object.keys(counts).sort(function (a, b) {
+    if (counts[b] !== counts[a]) return counts[b] - counts[a];
+    return a < b ? -1 : (a > b ? 1 : 0);
+  });
+  function padEnd(s, w) { s = String(s); while (s.length < w) s += " "; return s; }
+  function padStart(s, w) { s = String(s); while (s.length < w) s = " " + s; return s; }
+  var sep = "-".repeat(22) + " " + "-".repeat(7);
+  var lines = ["\n" + padEnd("TYPE", 22) + padStart("COUNT", 8), sep];
+  names.forEach(function (n) { lines.push(padEnd(n, 22) + padStart(counts[n], 8)); });
+  lines.push(sep);
+  lines.push(padEnd("TOTAL", 22) + padStart(total, 8));
+  return lines.join("\n") + "\n";
+}
+window.runTool = function (inputText, options) {
+  options = options || {};
+  var mode = options.mode || "redact";
+  if (["redact", "tokenize", "hash"].indexOf(mode) === -1) throw new Error("mode must be one of redact, tokenize, hash");
+  var text = String(inputText == null ? "" : inputText);
+  var detectors = buildDetectors(options.customPatterns);
+  var hits = collectHits(text, detectors);
+  var counts = {}, tokens = {}, tokenCounters = {};
+  function replacement(detector, value) {
+    var label = detector.name;
+    if (mode === "redact") return "[REDACTED:" + label + "]";
+    if (mode === "hash") return "[HASH:" + label + ":" + sha256Hex(value).slice(0, 12) + "]";
+    var key = label + "\u0000" + value;
+    if (!(key in tokens)) {
+      var n = (tokenCounters[label] || 0) + 1;
+      tokenCounters[label] = n;
+      tokens[key] = "[" + label + "_" + n + "]";
+    }
+    return tokens[key];
+  }
+  var out = [], cursor = 0;
+  hits.forEach(function (hit) {
+    if (hit.start < cursor) return;
+    out.push(text.slice(cursor, hit.valueStart));
+    var value = text.slice(hit.valueStart, hit.valueEnd);
+    out.push(replacement(hit.detector, value));
+    out.push(text.slice(hit.valueEnd, hit.end));
+    counts[hit.detector.name] = (counts[hit.detector.name] || 0) + 1;
+    cursor = hit.end;
+  });
+  out.push(text.slice(cursor));
+  var scrubbed = out.join("");
+  window.lastCounts = counts;
+  window.lastTotal = Object.keys(counts).reduce(function (acc, k) { return acc + counts[k]; }, 0);
+  if (options.report) return scrubbed + reportTable(counts);
+  return scrubbed;
+};
+</script>
+<script>
+(function () {
+var SAMPLE_LOG_BASE = [
+"2026-10-21 09:14:02 INFO  app starting, config loaded from /etc/myapp/prod.env",
+"2026-10-21 09:14:03 DEBUG connecting to <0>",
+"2026-10-21 09:14:04 INFO  stripe publishable key in use: <1>",
+"2026-10-21 09:14:05 ERROR payment failed for card <2>, customer <3>",
+"2026-10-21 09:14:06 WARN  retrying webhook <4>hooks.internal/v1/events",
+"2026-10-21 09:14:07 INFO  user signed in from <5>, phone <6>",
+"2026-10-21 09:14:08 DEBUG openai client key <7>",
+"2026-10-21 09:14:09 DEBUG aws credentials <8> loaded from env",
+"2026-10-21 09:14:10 INFO  slack alert token <9>",
+"2026-10-21 09:14:11 DEBUG Authorization: <10>",
+"2026-10-21 09:14:12 ERROR github token <11> leaked in commit message",
+"2026-10-21 09:14:13 INFO  support ticket from <12>, callback 020 7946 0018",
+"2026-10-21 09:14:14 DEBUG private key for deploy:",
+"<13>",
+"2026-10-21 09:14:15 INFO  request served in 42ms",
+""
+].join("\n");
+var SAMPLE_LOG_PARTS = [[112, 111, 115, 116, 103, 114, 101, 115, 58, 47, 47, 100, 101, 112, 108, 111, 121, 58, 115, 51, 99, 114, 101, 116, 33, 100, 98, 112, 97, 115, 115, 64, 100, 98, 46, 105, 110, 116, 101, 114, 110, 97, 108, 58, 53, 52, 51, 50, 47, 109, 121, 97, 112, 112], [112, 107, 95, 116, 101, 115, 116, 95, 52, 101, 67, 51, 57, 72, 113, 76, 121, 106, 87, 68, 97, 114, 106, 116, 84, 49, 122, 100, 112, 55, 100, 99], [52, 49, 49, 49, 32, 49, 49, 49, 49, 32, 49, 49, 49, 49, 32, 49, 49, 49, 49], [106, 97, 110, 101, 46, 100, 111, 101, 64, 101, 120, 97, 109, 112, 108, 101, 46, 99, 111, 109], [104, 116, 116, 112, 115, 58, 47, 47, 104, 111, 111, 107, 115, 58, 119, 104, 51, 98, 104, 111, 111, 107, 45, 112, 119, 64], [50, 48, 51, 46, 48, 46, 49, 49, 51, 46, 52, 53], [43, 49, 45, 53, 53, 53, 45, 48, 49, 52, 45, 56, 56, 57, 48], [115, 107, 45, 57, 102, 56, 101, 55, 100, 54, 99, 53, 98, 52, 97, 51, 57, 52, 56, 50, 55, 49, 54, 49, 53, 49, 52, 49, 51, 49, 50, 49, 48], [65, 75, 73, 65, 73, 79, 83, 70, 79, 68, 78, 78, 55, 69, 88, 65, 77, 80, 76, 69], [120, 111, 120, 98, 45, 49, 50, 51, 52, 53, 54, 55, 56, 57, 48, 49, 50, 45, 70, 65, 75, 69, 70, 65, 75, 69, 70, 65, 75, 69, 70, 65, 75, 69, 49], [66, 101, 97, 114, 101, 114, 32, 101, 121, 74, 104, 98, 71, 99, 105, 79, 105, 74, 73, 85, 122, 73, 49, 78, 105, 73, 115, 73, 110, 82, 53, 99, 67, 73, 54, 73, 107, 112, 88, 86, 67, 74, 57, 46, 101, 121, 74, 122, 100, 87, 73, 105, 79, 105, 73, 120, 77, 106, 77, 48, 78, 84, 89, 51, 79, 68, 107, 119, 73, 110, 48, 46, 100, 117, 109, 109, 121, 83, 105, 103, 110, 97, 116, 117, 114, 101, 70, 111, 114, 70, 105, 120, 116, 117, 114, 101, 115, 79, 110, 108, 121, 48], [103, 104, 112, 95, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 48, 49, 50, 51, 52, 53], [111, 112, 115, 45, 116, 101, 97, 109, 64, 101, 120, 97, 109, 112, 108, 101, 46, 111, 114, 103], [45, 45, 45, 45, 45, 66, 69, 71, 73, 78, 32, 82, 83, 65, 32, 80, 82, 73, 86, 65, 84, 69, 32, 75, 69, 89, 45, 45, 45, 45, 45, 10, 77, 73, 73, 69, 112, 65, 73, 66, 65, 65, 75, 67, 65, 81, 69, 65, 55, 98, 113, 115, 109, 107, 54, 102, 56, 113, 87, 109, 88, 104, 53, 74, 118, 69, 57, 74, 50, 118, 89, 100, 48, 113, 49, 119, 50, 101, 51, 114, 52, 116, 53, 121, 54, 117, 55, 105, 56, 111, 57, 112, 48, 97, 49, 115, 10, 100, 50, 102, 51, 103, 52, 104, 53, 106, 54, 107, 55, 108, 56, 122, 57, 120, 48, 99, 49, 118, 50, 98, 51, 110, 52, 109, 53, 113, 54, 119, 55, 101, 56, 114, 57, 116, 48, 121, 49, 117, 50, 105, 51, 111, 52, 112, 53, 97, 54, 115, 55, 100, 56, 102, 57, 103, 48, 104, 49, 106, 50, 10, 107, 51, 108, 52, 122, 53, 120, 54, 99, 55, 118, 56, 98, 57, 110, 48, 109, 49, 113, 50, 119, 51, 101, 52, 114, 53, 116, 54, 121, 55, 117, 56, 105, 57, 111, 48, 112, 49, 97, 50, 115, 51, 100, 52, 102, 53, 103, 54, 104, 55, 106, 56, 107, 57, 108, 48, 122, 49, 120, 50, 99, 51, 118, 10, 45, 45, 45, 45, 45, 69, 78, 68, 32, 82, 83, 65, 32, 80, 82, 73, 86, 65, 84, 69, 32, 75, 69, 89, 45, 45, 45, 45, 45]];
+var SAMPLE_LOG = SAMPLE_LOG_BASE.replace(/<(\d+)>/g, function(m, i){ return String.fromCharCode.apply(null, SAMPLE_LOG_PARTS[+i]); });
+var SAMPLE_ENV_BASE = [
+"# Sample config for logveil-shield fixtures. All values are fake.",
+"<0>",
+"AWS_ACCESS_KEY_ID=<1>",
+"<2>",
+"<3>",
+"DATABASE_URL=<4>",
+"<5>",
+"<6>",
+"SUPPORT_EMAIL=<7>",
+"ADMIN_PHONE=<8>",
+"# These placeholders must NOT be redacted:",
+"API_KEY=changeme",
+"PASSWORD=xxx",
+""
+].join("\n");
+var SAMPLE_ENV_PARTS = [[79, 80, 69, 78, 65, 73, 95, 65, 80, 73, 95, 75, 69, 89, 61, 115, 107, 45, 57, 102, 56, 101, 55, 100, 54, 99, 53, 98, 52, 97, 51, 57, 52, 56, 50, 55, 49, 54, 49, 53, 49, 52, 49, 51, 49, 50, 49, 48], [65, 75, 73, 65, 73, 79, 83, 70, 79, 68, 78, 78, 55, 69, 88, 65, 77, 80, 76, 69], [65, 87, 83, 95, 83, 69, 67, 82, 69, 84, 95, 65, 67, 67, 69, 83, 83, 95, 75, 69, 89, 61, 119, 74, 97, 108, 114, 88, 85, 116, 110, 70, 69, 77, 73, 47, 75, 55, 77, 68, 69, 78, 71, 47, 98, 80, 120, 82, 102, 105, 67, 89, 69, 88, 65, 77, 80, 76, 69, 75, 69, 89], [83, 84, 82, 73, 80, 69, 95, 83, 69, 67, 82, 69, 84, 95, 75, 69, 89, 61, 115, 107, 95, 108, 105, 118, 101, 95, 70, 65, 75, 69, 70, 65, 75, 69, 70, 65, 75, 69, 70, 65, 75, 69, 70, 65, 75, 69, 49, 50], [112, 111, 115, 116, 103, 114, 101, 115, 58, 47, 47, 100, 101, 112, 108, 111, 121, 58, 115, 51, 99, 114, 101, 116, 33, 100, 98, 112, 97, 115, 115, 64, 100, 98, 46, 105, 110, 116, 101, 114, 110, 97, 108, 58, 53, 52, 51, 50, 47, 109, 121, 97, 112, 112], [83, 76, 65, 67, 75, 95, 66, 79, 84, 95, 84, 79, 75, 69, 78, 61, 120, 111, 120, 98, 45, 49, 50, 51, 52, 53, 54, 55, 56, 57, 48, 49, 50, 45, 70, 65, 75, 69, 70, 65, 75, 69, 70, 65, 75, 69, 70, 65, 75, 69, 49], [71, 73, 84, 72, 85, 66, 95, 84, 79, 75, 69, 78, 61, 103, 104, 112, 95, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 48, 49, 50, 51, 52, 53], [111, 112, 115, 45, 116, 101, 97, 109, 64, 101, 120, 97, 109, 112, 108, 101, 46, 111, 114, 103], [43, 49, 45, 53, 53, 53, 45, 48, 49, 52, 45, 56, 56, 57, 48]];
+var SAMPLE_ENV = SAMPLE_ENV_BASE.replace(/<(\d+)>/g, function(m, i){ return String.fromCharCode.apply(null, SAMPLE_ENV_PARTS[+i]); });
+  var inputEl = document.getElementById("input");
+  var outputEl = document.getElementById("output");
+  var downloadBtn = document.getElementById("download");
+  var lastReport = "";
+  document.getElementById("file").addEventListener("change", function (event) {
+    var file = event.target.files && event.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () { inputEl.value = String(reader.result || ""); };
+    reader.readAsText(file);
+  });
+  document.getElementById("sample").addEventListener("click", function () { inputEl.value = SAMPLE_LOG; });
+  document.getElementById("sample2").addEventListener("click", function () { inputEl.value = SAMPLE_ENV; });
+  document.getElementById("run").addEventListener("click", function () {
+    var options = { mode: document.getElementById("opt-mode").value, report: document.getElementById("opt-report").checked };
+    var patName = document.getElementById("opt-patname").value.trim();
+    var pat = document.getElementById("opt-pat").value;
+    if (patName && pat) options.customPatterns = [{ name: patName, pattern: pat }];
+    try { lastReport = window.runTool(inputEl.value, options); }
+    catch (e) { lastReport = "Error: " + e.message; }
+    outputEl.textContent = lastReport;
+    downloadBtn.disabled = false;
+  });
+  downloadBtn.addEventListener("click", function () {
+    if (!lastReport) return;
+    var blob = new Blob([lastReport], { type: "text/plain;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    link.href = url; link.download = "scrubbed.txt";
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  });
+})();
+</script>
+</body>
+</html>
