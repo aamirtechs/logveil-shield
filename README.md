@@ -98,9 +98,11 @@ shipped [REDACTED:ORDER_ID] to [REDACTED:EMAIL]
 ## Detectors
 
 ```text
+GCP_SERVICE_ACCOUNT  Google Cloud service-account JSON containing a private key.
 PEM_PRIVATE_KEY      PEM private key blocks (RSA, EC, DSA, OpenSSH, Ed25519).
 DB_CONNECTION_STRING Database connection strings (postgres, mysql, mongodb, redis).
 URL_CREDENTIALS      Passwords embedded in URLs (https://user:pass@host).
+AZURE_STORAGE_KEY    Azure Storage connection-string account keys.
 AWS_ACCESS_KEY       AWS access key IDs (AKIA...).
 AWS_SECRET_KEY       AWS secret access keys in assignments.
 GITHUB_TOKEN         GitHub personal access and app tokens.

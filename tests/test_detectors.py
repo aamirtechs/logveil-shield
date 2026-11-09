@@ -1,9 +1,11 @@
 """Tests for the detector patterns."""
 
 import re
+import json
 import unittest
 
 from logveil_shield.detectors import DETECTORS, luhn_ok
+from logveil_shield.engine import Redactor
 
 
 def _detector(name):
@@ -33,6 +35,27 @@ class LuhnTest(unittest.TestCase):
 
 
 class DetectorTest(unittest.TestCase):
+    def test_azure_storage_account_key(self):
+        fake_key = "A" * 84 + "=="  # Synthetic, never a real credential.
+        source = f"DefaultEndpointsProtocol=https;AccountKey={fake_key};EndpointSuffix=core.windows.net"
+        matches = _matches("AZURE_STORAGE_KEY", source)
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0].group("value"), fake_key)
+        self.assertEqual(_matches("AZURE_STORAGE_KEY", "AccountKey=not-base64"), [])
+        self.assertEqual(_matches("AZURE_STORAGE_KEY", "AccountKey=" + "A" * 16), [])
+        self.assertIn("AccountKey=[REDACTED:AZURE_STORAGE_KEY]", Redactor().scrub(source))
+
+    def test_gcp_service_account_precedes_pem_detector(self):
+        fake_pem = ("-----BEGIN PRIVATE KEY-----\n" + "A" * 48
+                    + "\n-----END PRIVATE KEY-----\n")
+        source = json.dumps({"type": "service_account", "project_id": "test-project",
+                             "private_key": fake_pem,
+                             "client_email": "fake@sample-project.iam.gserviceaccount.com"})
+        self.assertEqual(len(_matches("GCP_SERVICE_ACCOUNT", source)), 1)
+        self.assertEqual(_matches("GCP_SERVICE_ACCOUNT", source.replace("service_account", "user")), [])
+        self.assertEqual(_matches("GCP_SERVICE_ACCOUNT", source.replace("client_email", "email")), [])
+        self.assertEqual(Redactor().scrub(source), "[REDACTED:GCP_SERVICE_ACCOUNT]")
+
     def test_aws_access_key(self):
         self.assertEqual(len(_matches("AWS_ACCESS_KEY", "key AKIAIOSFODNN7EXAMPLE here")), 1)
         self.assertEqual(len(_matches("AWS_ACCESS_KEY", "key AKIA too short")), 0)
