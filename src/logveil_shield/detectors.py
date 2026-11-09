@@ -74,6 +74,16 @@ def _d(name, pattern, description, flags=0, **kwargs):
 
 
 DETECTORS: list[Detector] = [
+    # A service-account JSON document must win over its embedded PEM key.
+    _d(
+        "GCP_SERVICE_ACCOUNT",
+        r'\{(?=[^{}]*"type"\s*:\s*"service_account")'
+        r'(?=[^{}]*"client_email"\s*:\s*"[^"\s]+@[^"\s]+")'
+        r'(?=[^{}]*"private_key"\s*:\s*"-----BEGIN PRIVATE KEY-----'
+        r'(?:\\.|[^"\\])*-----END PRIVATE KEY-----(?:\\n)?")[^{}]*\}',
+        "Google Cloud service-account JSON containing a private key.",
+        flags=re.DOTALL,
+    ),
     _d(
         "PEM_PRIVATE_KEY",
         r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |ED25519 )?PRIVATE KEY-----"
@@ -91,6 +101,12 @@ DETECTORS: list[Detector] = [
         "URL_CREDENTIALS",
         r"https?://[^:/\s@]+:(?P<value>[^@\s/]+)@",
         "Passwords embedded in URLs (https://user:pass@host).",
+        value_group="value",
+    ),
+    _d(
+        "AZURE_STORAGE_KEY",
+        r"(?i)\bAccountKey\s*=\s*(?P<value>[A-Za-z0-9+/]{40,}={0,2})(?![A-Za-z0-9+/=])",
+        "Azure Storage connection-string account keys.",
         value_group="value",
     ),
     _d(
